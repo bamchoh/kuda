@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"time"
 
 	"go.bug.st/serial"
 )
@@ -74,12 +76,23 @@ func (c *Client) Call(method string, params any) (*JsonRpcResponse, error) {
 	}
 
 	totalBuf := make([]byte, 0)
-	buf := make([]byte, 1024)
+	buf := make([]byte, 65535)
 	for {
+		if len(totalBuf) > 0 {
+			port.SetReadTimeout(1 * time.Second)
+		} else {
+			port.SetReadTimeout(serial.NoTimeout)
+		}
+
 		n, err := port.Read(buf)
 		if err != nil {
 			return nil, fmt.Errorf("[client] reading buffer was failed: %w", err)
 		}
+
+		if len(totalBuf) > 0 && n == 0 {
+			return nil, errors.New("[client] [timeout] received bytes are not enough")
+		}
+
 		totalBuf = append(totalBuf, buf[:n]...)
 
 		if len(totalBuf) < 4 {
@@ -88,7 +101,7 @@ func (c *Client) Call(method string, params any) (*JsonRpcResponse, error) {
 
 		size := binary.LittleEndian.Uint32(totalBuf[:4])
 
-		if len(totalBuf) < int(size) {
+		if len(totalBuf) < int(size)+4 {
 			continue
 		}
 

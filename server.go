@@ -26,8 +26,18 @@ func (r *response) Write(data []byte) (int, error) {
 	if err := binary.Write(r.writer, binary.LittleEndian, uint32(len(data))); err != nil {
 		return 0, err
 	}
-	if err := binary.Write(r.writer, binary.LittleEndian, data); err != nil {
-		return 0, err
+
+	size := 1024
+	var j int
+	for i := 0; i < len(data); i += size {
+		j += size
+		if j > len(data) {
+			j = len(data)
+		}
+		if err := binary.Write(r.writer, binary.LittleEndian, data[i:j]); err != nil {
+			return 0, err
+		}
+		time.Sleep(1 * time.Millisecond)
 	}
 
 	return len(data), nil
