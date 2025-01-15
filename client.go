@@ -63,7 +63,15 @@ func (c *Client) Call(method string, params any) (*JsonRpcResponse, error) {
 
 	b := outbuf.Bytes()
 	binary.Write(port, binary.LittleEndian, uint32(len(b)))
-	binary.Write(port, binary.LittleEndian, b)
+	size := 1024
+	var j int
+	for i := 0; i < len(b); i += size {
+		j += size
+		if j > len(b) {
+			j = len(b)
+		}
+		binary.Write(port, binary.LittleEndian, b[i:j])
+	}
 
 	totalBuf := make([]byte, 0)
 	buf := make([]byte, 1024)

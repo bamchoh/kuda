@@ -53,10 +53,12 @@ func (s *Server) Serve(ctx context.Context, handler http.Handler) error {
 	defer port.Close()
 
 	totalBuf := make([]byte, 0)
-	buf := make([]byte, 1024)
+	buf := make([]byte, 65536)
 	for {
 		if len(totalBuf) > 0 {
 			port.SetReadTimeout(1 * time.Second)
+		} else {
+			port.SetReadTimeout(serial.NoTimeout)
 		}
 		n, err := port.Read(buf)
 		if err != nil {
@@ -82,7 +84,7 @@ func (s *Server) Serve(ctx context.Context, handler http.Handler) error {
 
 		size := binary.LittleEndian.Uint32(totalBuf[:4])
 
-		if len(totalBuf) < int(size) {
+		if len(totalBuf) < int(size)+4 {
 			continue
 		}
 
