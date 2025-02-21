@@ -63,10 +63,12 @@ func (c *Client) Call(method string, params any) (*JsonRpcResponse, error) {
 		return nil, fmt.Errorf("[client] encode error: %w", err)
 	}
 
+	fmt.Println("[client] Write")
 	if _, err := port.Write(outbuf.Bytes()); err != nil {
 		return nil, fmt.Errorf("[client] write error: %w", err)
 	}
 
+	fmt.Println("[client] Read")
 	rxBuf := &bytes.Buffer{}
 	rxBytes := make([]byte, 65535)
 	n, err := port.Read(rxBytes)

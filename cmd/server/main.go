@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"os"
 
@@ -35,9 +36,14 @@ type (
 		Name string
 		Data []byte
 	}
+
+	FileTransferUploadArgs struct {
+		Name string
+		Data []byte
+	}
 )
 
-func (f *FileTransfer) Trans(r *http.Request, args *FileTransferArgs, result *FileTransferReply) error {
+func (f *FileTransfer) Download(r *http.Request, args *FileTransferArgs, result *FileTransferReply) error {
 	data, err := os.ReadFile(args.Name)
 	if err != nil {
 		return err
@@ -45,6 +51,16 @@ func (f *FileTransfer) Trans(r *http.Request, args *FileTransferArgs, result *Fi
 
 	result.Name = args.Name
 	result.Data = data
+
+	return nil
+}
+
+func (f *FileTransfer) Upload(r *http.Request, args *FileTransferUploadArgs, result *FileTransferReply) error {
+	if err := os.WriteFile(args.Name, args.Data, 0777); err != nil {
+		return err
+	}
+
+	result.Name = args.Name
 
 	return nil
 }
@@ -60,5 +76,7 @@ func main() {
 	srv := &kuda.Server{
 		PortName: "/dev/ttyGS0",
 	}
-	srv.Serve(context.Background(), s)
+	if err := srv.Serve(context.Background(), s); err != nil {
+		log.Println(err)
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 
 	"go.bug.st/serial"
@@ -12,6 +13,7 @@ import (
 
 type response struct {
 	writer io.Writer
+	err    error
 }
 
 func (r *response) Header() http.Header {
@@ -20,10 +22,18 @@ func (r *response) Header() http.Header {
 }
 
 func (r *response) Write(data []byte) (int, error) {
-	return r.writer.Write(data)
+	n, err := r.writer.Write(data)
+	if err != nil {
+		r.err = err
+	}
+	return n, nil
 }
 
 func (r *response) WriteHeader(statusCode int) {
+}
+
+func (r *response) Err() error {
+	return r.err
 }
 
 type Server struct {
@@ -48,6 +58,7 @@ func (s *Server) Serve(ctx context.Context, handler http.Handler) error {
 	for {
 		rxBytes := make([]byte, 65535)
 		n, err := port.Read(rxBytes)
+		fmt.Println("[server] Read", n, "bytes")
 		if err != nil {
 			return fmt.Errorf("[server] reading buffer was failed: %w", err)
 		}
@@ -67,8 +78,13 @@ func (s *Server) Serve(ctx context.Context, handler http.Handler) error {
 
 		w := &response{
 			port,
+			nil,
 		}
 		handler.ServeHTTP(w, req)
+
+		if w.Err() != nil {
+			log.Println("[server] ServeHTTP error:", w.Err())
+		}
 
 		rxBuf.Reset()
 	}

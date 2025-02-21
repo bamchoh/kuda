@@ -39,10 +39,15 @@ type (
 		Name string
 		Data []byte
 	}
+
+	FileTransferUploadArgs struct {
+		Name string
+		Data []byte
+	}
 )
 
-func FileTransferTrans(client kuda.Client) {
-	response, err := client.Call("FileTransfer.Trans", &FileTransferArgs{Name: "IMG_9134.mp4"})
+func FileTransferDownload(client kuda.Client) {
+	response, err := client.Call("FileTransfer.Download", &FileTransferArgs{Name: "IMG_9134.mp4"})
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -58,11 +63,30 @@ func FileTransferTrans(client kuda.Client) {
 	}
 }
 
-func main() {
-	client := kuda.Client{
-		PortName: "COM10",
+func FileTransferUpload(client kuda.Client) {
+	data, err := os.ReadFile("IMG_9134.mp4")
+	if err != nil {
+		log.Fatalln(err)
 	}
 
-	FileTransferTrans(client)
+	response, err := client.Call("FileTransfer.Upload", &FileTransferUploadArgs{Name: "IMG_9134_Uploaded.mp4", Data: data})
+	if err != nil {
+		log.Fatalln(err)
+	}
+	var result FileTransferReply
+	err = response.GetObject(&result)
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
 
+func main() {
+	client := kuda.Client{
+		PortName: "COM4",
+	}
+
+	// CalculatorAdd(client)
+	FileTransferUpload(client)
+
+	FileTransferDownload(client)
 }
