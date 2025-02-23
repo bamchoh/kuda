@@ -1,7 +1,7 @@
 package main
 
 import (
-	"context"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -66,17 +66,17 @@ func (f *FileTransfer) Upload(r *http.Request, args *FileTransferUploadArgs, res
 }
 
 func main() {
+	portname := flag.String("port", "COM1", "port name")
+	flag.Parse()
+
 	s := rpc.NewServer()
-	s.RegisterCodec(json2.NewCodec(), "")
+	s.RegisterCodec(json2.NewCodec(), "application/json")
 	calculator := &Calculator{}
 	s.RegisterService(calculator, "")
 	filetransfer := &FileTransfer{}
 	s.RegisterService(filetransfer, "")
 
-	srv := &kuda.Server{
-		PortName: "/dev/ttyGS0",
-	}
-	if err := srv.Serve(context.Background(), s); err != nil {
+	if err := kuda.Serve(*portname, s); err != nil {
 		log.Println(err)
 	}
 }

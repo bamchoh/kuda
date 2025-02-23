@@ -2,7 +2,6 @@ package kuda
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"log"
@@ -10,6 +9,11 @@ import (
 
 	"go.bug.st/serial"
 )
+
+func Serve(portname string, handler http.Handler) error {
+	server := &Server{PortName: portname}
+	return server.Serve(handler)
+}
 
 type response struct {
 	writer io.Writer
@@ -41,7 +45,7 @@ type Server struct {
 	BaudRate int
 }
 
-func (s *Server) Serve(ctx context.Context, handler http.Handler) error {
+func (s *Server) Serve(handler http.Handler) error {
 	port := &Kuda{
 		PortName: s.PortName,
 		Mode: &serial.Mode{

@@ -14,6 +14,8 @@ import (
 type Kuda struct {
 	PortName  string
 	Mode      *serial.Mode
+	WriteSize int
+
 	port      serial.Port
 	rx        *bytes.Buffer
 	isWaitAck bool
@@ -28,6 +30,9 @@ func (kuda *Kuda) Open() (err error) {
 	kuda.rx = &bytes.Buffer{}
 	kuda.isWaitAck = false
 	kuda.rxTimeout = serial.NoTimeout
+	if kuda.WriteSize == 0 {
+		kuda.WriteSize = 1024
+	}
 	return nil
 }
 
@@ -68,7 +73,7 @@ func (kuda *Kuda) waitACK() error {
 
 func (kuda *Kuda) sendACK() error {
 	buf := &bytes.Buffer{}
-	if err := binary.Write(buf, binary.LittleEndian, uint32(1)); err != nil {
+	if err := binary.Write(buf, binary.BigEndian, uint32(1)); err != nil {
 		return err
 	}
 
@@ -86,7 +91,7 @@ func (kuda *Kuda) sendACK() error {
 }
 
 func (kuda *Kuda) Write(data []byte) (n int, err error) {
-	size := 1024
+	size := kuda.WriteSize
 	j := 0
 	for i := 0; i < len(data); i += size {
 		j += size
@@ -94,7 +99,7 @@ func (kuda *Kuda) Write(data []byte) (n int, err error) {
 			j = len(data)
 		}
 
-		if err := binary.Write(kuda.port, binary.LittleEndian, uint32(j-i)); err != nil {
+		if err := binary.Write(kuda.port, binary.BigEndian, uint32(j-i)); err != nil {
 			return 0, err
 		}
 
@@ -177,7 +182,7 @@ func (kuda *Kuda) Read(resultBuf []byte) (n int, err error) {
 		}
 
 		if size == 0 {
-			size = int32(binary.LittleEndian.Uint32(tmpRxBuf.Next(4)))
+			size = int32(binary.BigEndian.Uint32(tmpRxBuf.Next(4)))
 			if next, err = tmpRxBuf.ReadByte(); err != nil {
 				kuda.Reopen()
 				return 0, fmt.Errorf("parsing received data was failed: %w", err)

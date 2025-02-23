@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 
@@ -47,7 +48,7 @@ type (
 )
 
 func FileTransferDownload(client kuda.Client) {
-	response, err := client.Call("FileTransfer.Download", &FileTransferArgs{Name: "IMG_9134.mp4"})
+	response, err := client.Call("FileTransfer.Download", &FileTransferArgs{Name: "main.go"})
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -64,12 +65,12 @@ func FileTransferDownload(client kuda.Client) {
 }
 
 func FileTransferUpload(client kuda.Client) {
-	data, err := os.ReadFile("IMG_9134.mp4")
+	data, err := os.ReadFile("main.go")
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	response, err := client.Call("FileTransfer.Upload", &FileTransferUploadArgs{Name: "IMG_9134_Uploaded.mp4", Data: data})
+	response, err := client.Call("FileTransfer.Upload", &FileTransferUploadArgs{Name: "main.go", Data: data})
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -81,8 +82,11 @@ func FileTransferUpload(client kuda.Client) {
 }
 
 func main() {
+	portname := flag.String("port", "COM1", "port name")
+	flag.Parse()
+
 	client := kuda.Client{
-		PortName: "COM4",
+		PortName: *portname,
 	}
 
 	// CalculatorAdd(client)
