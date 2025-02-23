@@ -22,8 +22,12 @@ type Kuda struct {
 	rxTimeout time.Duration
 }
 
+var openSerial = func(portname string, mode *serial.Mode) (serial.Port, error) {
+	return serial.Open(portname, mode)
+}
+
 func (kuda *Kuda) Open() (err error) {
-	kuda.port, err = serial.Open(kuda.PortName, kuda.Mode)
+	kuda.port, err = openSerial(kuda.PortName, kuda.Mode)
 	if err != nil {
 		return fmt.Errorf("opening serial port was failed: %w", err)
 	}
