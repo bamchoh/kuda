@@ -44,10 +44,7 @@ func main() {
 	calculator := &Calculator{}
 	s.RegisterService(calculator, "")
 
-	srv := &kuda.Server{
-		PortName: "/dev/ttyGS0",
-	}
-	srv.Serve(context.Background(), s)
+	kuda.Serve("/dev/ttyGS0", s)
 }
 ```
 
@@ -72,23 +69,20 @@ type (
 )
 
 func main() {
-	added := 10
-	add := 12
-
 	client := kuda.Client{
 		PortName: "COM9",
 	}
 
-	response, err := client.Call("Calculator.Add", &AdditionArgs{Added: added, Add: add})
+	response, err := client.Call("Calculator.Add", &AdditionArgs{Added: 10, Add: 12})
 	if err != nil {
 		log.Fatalln(err)
 	}
 	var result AdditionResult
-	err = response.GetObject(&result) // (2)
+	err = response.GetObject(&result)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	log.Printf("%d + %d = %d", added, add, result.Computation)
+	log.Printf("10 + 12 = %d", result.Computation)
 }
 ```
 
