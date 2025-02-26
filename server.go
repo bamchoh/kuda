@@ -1,7 +1,6 @@
 package kuda
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -11,7 +10,14 @@ import (
 )
 
 func Serve(portname string, handler http.Handler) error {
-	server := &Server{PortName: portname}
+	port := &Kuda{
+		PortName: portname,
+		Mode: &serial.Mode{
+			BaudRate: 115200,
+		},
+	}
+
+	server := &Server{port}
 	return server.Serve(handler)
 }
 
@@ -41,55 +47,35 @@ func (r *response) Err() error {
 }
 
 type Server struct {
-	PortName string
-	BaudRate int
+	port *Kuda
 }
 
 func (s *Server) Serve(handler http.Handler) error {
-	port := &Kuda{
-		PortName: s.PortName,
-		Mode: &serial.Mode{
-			BaudRate: s.BaudRate,
-		},
-	}
-
-	if err := port.Open(); err != nil {
+	if err := s.port.Open(); err != nil {
 		return fmt.Errorf("[server] opening serial port was failed: %w", err)
 	}
-	defer port.Close()
+	defer s.port.Close()
 
-	rxBuf := &bytes.Buffer{}
 	for {
-		rxBytes := make([]byte, 65535)
-		n, err := port.Read(rxBytes)
-		fmt.Println("[server] Read", n, "bytes")
+		packet, err := s.port.ReadPacket()
 		if err != nil {
-			return fmt.Errorf("[server] reading buffer was failed: %w", err)
+			return fmt.Errorf("[server] reading request was failed: %w", err)
 		}
 
-		if _, err := rxBuf.Write(rxBytes[:n]); err != nil {
-			return fmt.Errorf("[server] appending RX buffer was failed: %w", err)
-		}
-
-		if _, err := port.WriteTo(rxBuf); err != nil {
-			return fmt.Errorf("[server] draining RX buffer was failed: %w", err)
-		}
-
-		req, err := http.NewRequest("POST", "", rxBuf)
+		req, err := http.NewRequest("POST", "", packet)
 		if err != nil {
 			return fmt.Errorf("[server] creating a request was failed: %w", err)
 		}
 
 		w := &response{
-			port,
+			s.port,
 			nil,
 		}
+
 		handler.ServeHTTP(w, req)
 
 		if w.Err() != nil {
 			log.Println("[server] ServeHTTP error:", w.Err())
 		}
-
-		rxBuf.Reset()
 	}
 }

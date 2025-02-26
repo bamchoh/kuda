@@ -44,13 +44,12 @@ func (c *Client) Call(method string, params any) (*JsonRpcResponse, error) {
 		},
 	}
 
-	err := port.Open()
-	if err != nil {
+	if err := port.Open(); err != nil {
 		return nil, fmt.Errorf("[client] serial port couldn't be opened: %w", err)
 	}
 	defer port.Close()
 
-	packet := &JsonRpcRequest{
+	rcpReq := &JsonRpcRequest{
 		Method:  method,
 		Params:  params,
 		Id:      0,
@@ -59,7 +58,7 @@ func (c *Client) Call(method string, params any) (*JsonRpcResponse, error) {
 
 	outbuf := &bytes.Buffer{}
 	enc := json.NewEncoder(outbuf)
-	if err := enc.Encode(packet); err != nil {
+	if err := enc.Encode(rcpReq); err != nil {
 		return nil, fmt.Errorf("[client] encode error: %w", err)
 	}
 
@@ -69,30 +68,19 @@ func (c *Client) Call(method string, params any) (*JsonRpcResponse, error) {
 	}
 
 	fmt.Println("[client] Read")
-	rxBuf := &bytes.Buffer{}
-	rxBytes := make([]byte, 65535)
-	n, err := port.Read(rxBytes)
-	if err != nil {
+	if packet, err := port.ReadPacket(); err != nil {
 		return nil, fmt.Errorf("[client] reading buffer was failed: %w", err)
-	}
+	} else {
+		var resp JsonRpcResponse
+		dec := json.NewDecoder(packet)
+		if err := dec.Decode(&resp); err != nil {
+			return nil, fmt.Errorf("[client] decode error: %w", err)
+		}
 
-	if _, err := rxBuf.Write(rxBytes[:n]); err != nil {
-		return nil, fmt.Errorf("[client] appending RX buffer was failed: %w", err)
-	}
+		if resp.Error.Code != 0 {
+			return nil, fmt.Errorf("[client] error response has been received: %d : %s", resp.Error.Code, resp.Error.Message)
+		}
 
-	if _, err := port.WriteTo(rxBuf); err != nil {
-		return nil, fmt.Errorf("[client] draining RX buffer was failed: %w", err)
+		return &resp, nil
 	}
-
-	var resp JsonRpcResponse
-	dec := json.NewDecoder(rxBuf)
-	if err := dec.Decode(&resp); err != nil {
-		return nil, fmt.Errorf("[client] decode error: %w", err)
-	}
-
-	if resp.Error.Code != 0 {
-		return nil, fmt.Errorf("[client] error response has been received: %d : %s", resp.Error.Code, resp.Error.Message)
-	}
-
-	return &resp, nil
 }
