@@ -39,6 +39,12 @@ func (s *SafeBuffer) Write(p []byte) (n int, err error) {
 	return s.buffer.Write(p)
 }
 
+func (s *SafeBuffer) WriteByte(c byte) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.buffer.WriteByte(c)
+}
+
 func (s *SafeBuffer) Read(p []byte) (n int, err error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()

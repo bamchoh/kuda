@@ -2,10 +2,10 @@ package kuda
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"go.bug.st/serial"
@@ -16,18 +16,32 @@ type Packet struct {
 	Next byte
 }
 
+func sendPacket(buf io.Writer, next byte, body []byte) (int, error) {
+	if err := binary.Write(buf, binary.BigEndian, uint32(len(body))); err != nil {
+		return 0, err
+	}
+
+	// next
+	if err := binary.Write(buf, binary.BigEndian, next); err != nil {
+		return 0, err
+	}
+
+	// body
+	if err := binary.Write(buf, binary.BigEndian, []byte(body)); err != nil {
+		return 0, err
+	}
+
+	return len(body), nil
+}
+
 type Kuda struct {
 	PortName  string
 	Mode      *serial.Mode
 	WriteSize int
 
-	rxPacketQueue chan *Packet
-	rxBuffer      *bytes.Buffer
-	cancelRead    context.CancelFunc
-	readCanceled  chan struct{}
-	port          serial.Port
-	isWaitAck     bool
-	rxTimeout     time.Duration
+	rxBuffer  *bytes.Buffer
+	port      serial.Port
+	rxTimeout time.Duration
 }
 
 var openSerial = func(portname string, mode *serial.Mode) (serial.Port, error) {
@@ -39,50 +53,17 @@ func (kuda *Kuda) Open() (err error) {
 	if err != nil {
 		return fmt.Errorf("opening serial port was failed: %w", err)
 	}
-	kuda.rxPacketQueue = make(chan *Packet, 10)
-	kuda.readCanceled = make(chan struct{})
 	kuda.rxBuffer = &bytes.Buffer{}
-	kuda.isWaitAck = false
 	kuda.rxTimeout = serial.NoTimeout
 	if kuda.WriteSize == 0 {
 		kuda.WriteSize = 1024
 	}
 
-	var ctx context.Context
-	ctx, kuda.cancelRead = context.WithCancel(context.Background())
-
-	go func(ctx context.Context) {
-		for {
-			if err := kuda.read(ctx); err != nil {
-				select {
-				case <-ctx.Done():
-					kuda.readCanceled <- struct{}{}
-					return
-				default:
-				}
-
-				kuda.Reopen()
-			} else {
-				kuda.readCanceled <- struct{}{}
-				return
-			}
-		}
-	}(ctx)
-
 	return nil
 }
 
 func (kuda *Kuda) Close() error {
-	if kuda.cancelRead != nil {
-		kuda.cancelRead()
-	}
-
 	err := kuda.port.Close()
-
-	select {
-	case <-kuda.readCanceled:
-	case <-time.After(3 * time.Second):
-	}
 
 	return err
 }
@@ -100,32 +81,19 @@ func (kuda *Kuda) Reopen() error {
 }
 
 func (kuda *Kuda) waitACK() error {
-	kuda.isWaitAck = true
 	origTimeout := kuda.rxTimeout
 	kuda.rxTimeout = 1 * time.Second
 	defer func() {
-		kuda.isWaitAck = false
 		kuda.rxTimeout = origTimeout
 	}()
 
-	<-kuda.rxPacketQueue
+	_, err := kuda.read()
 
-	return nil
+	return err
 }
 
 func (kuda *Kuda) sendACK() error {
-	buf := &bytes.Buffer{}
-	if err := binary.Write(buf, binary.BigEndian, uint32(1)); err != nil {
-		return err
-	}
-
-	// next: 0
-	// status: 0 (ACK)
-	if _, err := buf.Write([]byte{0, 0}); err != nil {
-		return err
-	}
-
-	if _, err := kuda.port.Write(buf.Bytes()); err != nil {
+	if _, err := sendPacket(kuda.port, 0, []byte{0}); err != nil {
 		return err
 	}
 
@@ -133,26 +101,17 @@ func (kuda *Kuda) sendACK() error {
 }
 
 func (kuda *Kuda) Write(data []byte) (n int, err error) {
-	size := kuda.WriteSize
 	j := 0
-	for i := 0; i < len(data); i += size {
-		j += size
-		if j > len(data) {
-			j = len(data)
-		}
-
-		if err := binary.Write(kuda.port, binary.BigEndian, uint32(j-i)); err != nil {
-			return 0, err
-		}
-
+	for i := 0; i < len(data); i = j {
 		var next byte
-		if j < len(data) {
+		if i+kuda.WriteSize >= len(data) {
+			j = len(data)
+		} else {
+			j = i + kuda.WriteSize
 			next = 1
 		}
 
-		sendBytes := append([]byte{next}, data[i:j]...)
-		// dumpByteSlice(sendBytes)
-		if _, err := kuda.port.Write(sendBytes); err != nil {
+		if _, err := sendPacket(kuda.port, next, data[i:j]); err != nil {
 			return 0, err
 		}
 
@@ -184,7 +143,10 @@ func (kuda *Kuda) internalRead(tmpRxBufLen int, readBytes []byte) (int, error) {
 func (kuda *Kuda) ReadPacket() (*bytes.Buffer, error) {
 	entirePacket := &bytes.Buffer{}
 	for {
-		packet := <-kuda.rxPacketQueue
+		packet, err := kuda.read()
+		if err != nil {
+			return nil, fmt.Errorf("[kuda.ReadPacket] ")
+		}
 		if _, err := entirePacket.Write(packet.Data); err != nil {
 			return nil, fmt.Errorf("[kuda.ReadPacket] writing packet error: %w", err)
 		}
@@ -199,40 +161,32 @@ func (kuda *Kuda) ReadPacket() (*bytes.Buffer, error) {
 	}
 }
 
-func (kuda *Kuda) read(ctx context.Context) (err error) {
+func (kuda *Kuda) read() (packet *Packet, err error) {
 	readBytes := make([]byte, 2048)
 	var size int32
 	var next byte
+	first := true
 	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-
 		var n int
 
-		n, err = kuda.internalRead(kuda.rxBuffer.Len(), readBytes)
-
-		if err != nil {
-			return fmt.Errorf("reading buffer was failed:%w", err)
+		if !(first && kuda.rxBuffer.Len() > 0) {
+			n, err = kuda.internalRead(kuda.rxBuffer.Len(), readBytes)
+			if err != nil {
+				return nil, fmt.Errorf("reading buffer was failed:%w", err)
+			}
 		}
-
-		if kuda.rxBuffer.Len() > 0 {
-			kuda.rxBuffer.Reset()
-			continue
-		}
+		first = false
 
 		kuda.rxBuffer.Write(readBytes[:n])
 
-		if kuda.rxBuffer.Len() < 5 {
-			continue
-		}
-
 		if size == 0 {
+			if kuda.rxBuffer.Len() < 5 {
+				continue
+			}
+
 			size = int32(binary.BigEndian.Uint32(kuda.rxBuffer.Next(4)))
 			if next, err = kuda.rxBuffer.ReadByte(); err != nil {
-				return fmt.Errorf("parsing received data was failed: %w", err)
+				return nil, fmt.Errorf("parsing received data was failed: %w", err)
 			}
 		}
 
@@ -240,8 +194,8 @@ func (kuda *Kuda) read(ctx context.Context) (err error) {
 			continue
 		}
 
-		packet := &Packet{Data: kuda.rxBuffer.Next(int(size)), Next: next}
+		packet = &Packet{Data: kuda.rxBuffer.Next(int(size)), Next: next}
 
-		kuda.rxPacketQueue <- packet
+		return packet, nil
 	}
 }
