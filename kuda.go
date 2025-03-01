@@ -145,7 +145,7 @@ func (kuda *Kuda) ReadPacket() (*bytes.Buffer, error) {
 	for {
 		packet, err := kuda.read()
 		if err != nil {
-			return nil, fmt.Errorf("[kuda.ReadPacket] ")
+			return nil, fmt.Errorf("[kuda.ReadPacket] read error: %w", err)
 		}
 		if _, err := entirePacket.Write(packet.Data); err != nil {
 			return nil, fmt.Errorf("[kuda.ReadPacket] writing packet error: %w", err)
