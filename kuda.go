@@ -59,13 +59,19 @@ func (kuda *Kuda) Open() (err error) {
 		kuda.WriteSize = 1024
 	}
 
+	if err = kuda.port.ResetOutputBuffer(); err != nil {
+		return fmt.Errorf("reset output buffer was failed: %w", err)
+	}
+
+	if err = kuda.port.ResetInputBuffer(); err != nil {
+		return fmt.Errorf("reset input buffer was failed: %w", err)
+	}
+
 	return nil
 }
 
 func (kuda *Kuda) Close() error {
-	err := kuda.port.Close()
-
-	return err
+	return kuda.port.Close()
 }
 
 func (kuda *Kuda) Reopen() error {

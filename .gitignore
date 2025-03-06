@@ -25,3 +25,4 @@ go.work.sum
 .env
 
 cmd/server/kuda_server
+cmd/client/kuda_client
